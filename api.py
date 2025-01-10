@@ -240,9 +240,9 @@ def gen_chart(user_input):
         4.检查x和y中的元素是否为浮点数。如果是，则添加代码将数据精确到小数点后两位。
         5.结合用户的要求并根据这两组数据的字段名称，选择合适的中文横纵坐标名和图表标题，请注意都需要是中文。
         6.重点：输出内容不要包含markdown语法，内容的格式严格按照：<name>[图表标题]</name><python>[正确的python3代码]</python> 这样的格式，参考返回格式要求。
-        7.重点：添加这条语句以保证生成的图片兼容中文： plt.rcParams['font.family'] = 'Heiti TC'。
+        7.重点：添加这条语句以保证生成的图片兼容中文： plt.rcParams['font.family'] = fm.FontProperties(fname='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc').get_name()
         8.设置figsize为(10, 8)。
-        9.不需要显示图片，即删除“plt.show()”这句代码，将图片储存在img变量中。
+        9.不需要显示图片，即删除“plt.show()”这句代码，将图片储存在"./tmpImg.png"中
         
     请一步一步思考，给出结果，无需输出其他解释信息，并确保你的结果内容格式如下:
         <name>[图表标题]</name><python>[正确的python3代码]</python>
@@ -304,18 +304,18 @@ def gen_chart(user_input):
     print(parse_result['python'])
     x = [item[0] for item in data]  # 转换为字符串类型，适用于分类轴
     y = [item[1] for item in data]
-    img=None
+    # img=None
     exec(parse_result['python'])
-    return img
+    return "./tmpImg.png"
 
 # 生成图表接口（返回图片）
 @app.route('/generate_chart', methods=['POST'])
 def generate_chart():
     user_input = request.json.get('input')
-    img = gen_chart(user_input=user_input)
+    img_path = gen_chart(user_input=user_input)
 
-    return send_file(img, mimetype='image/png')
+    return send_file(img_path, mimetype='image/png')
     # render_chart(data_2d,title,fields)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0',debug=True)

@@ -1,5 +1,6 @@
 from openai import OpenAI
 import os
+import openai
 
 client = OpenAI(
     api_key=os.getenv('OPENAI_API_KEY')
@@ -11,9 +12,14 @@ file = client.files.create(
     purpose='assistants'
 )
 
+font_file = client.files.create(
+    file=open("NotoSansCJK-Regular.ttc", "rb"),
+    purpose='user_data'
+)
+
 # Create an assistant using the file ID
 assistant = client.beta.assistants.create(
-    instructions="你是一个非常严谨的数据分析专家。下面你会就这个表格被提出一些可视化的要求, 请按照要求根据表格中的内容编写代码以生成可视化的图表",
+    instructions="你是一个非常严谨的数据分析专家。下面你会就这个表格被提出一些可视化的要求, 请按照要求根据表格中的内容编写代码以生成可视化的图表。",
     model="gpt-4o",
     tools=[{"type": "code_interpreter"}],
     tool_resources={
@@ -29,14 +35,15 @@ thread = client.beta.threads.create()
 message = client.beta.threads.messages.create(
     thread_id=thread.id,
     role="user",
-    content="展示总评最高的五位学生的作业分数的变化"
+    content="展示总评最高的五位学生的作业分数的变化。",
+    attachments=[{ "file_id": font_file.id , "tools": [{"type": "code_interpreter"}]}],
 )
 print(message)
 
 run = client.beta.threads.runs.create_and_poll(
     thread_id=thread.id,
     assistant_id=assistant.id,
-    instructions="请认真对待用户的要求，同时尽可能使用中文，生成的图表中使用 Heiti TC 字体。"
+    instructions="请认真对待用户的要求，同时尽可能使用中文。注意：图表生成过程的字体选择用户上传的字体文件中字体"
 )
 print(run)
 
@@ -46,6 +53,8 @@ messages = client.beta.threads.messages.list( # 查看thread.id中的message
 print("===============================")
 print(messages)
 print("===============================")
+
+messages.data = sorted(messages.data, key=lambda x: x.created_at, reverse=True)
 
 messages_data = messages.data
 
