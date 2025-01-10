@@ -1,3 +1,6 @@
 .DS_Store
 data/
 *.png
+table_analyzer.tar
+*.csv
+*.xlsx
