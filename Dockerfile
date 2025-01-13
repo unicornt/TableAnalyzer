@@ -11,6 +11,7 @@ RUN apt install -y fontconfig
 RUN fc-cache -fv
 RUN pip install --no-cache-dir python-magic
 RUN apt-get install -y libmagic1
+RUN pip install --no-cache-dir flask-cors
 # 设置工作目录
 WORKDIR /app
 
