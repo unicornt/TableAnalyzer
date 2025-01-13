@@ -309,7 +309,6 @@ def gen_chart(user_input):
     return "./tmpImg.png"
 
 # 生成图表接口（返回图片）
-@app.route('/generate_chart', methods=['POST'])
 def generate_chart():
     user_input = request.json.get('input')
     img_path = gen_chart(user_input=user_input)

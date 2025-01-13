@@ -106,6 +106,17 @@ def response():
                 # 创建一个线程
                 thread = client.beta.threads.create()
 
+                prompt = """
+                请遵从用户指令根据表格生成图片，有以下几点注意事项：
+                    1. 可以适当减少展示图片的横纵坐标的标签显示以保证不会过密。
+                    2. 标题和坐标的标签尽可能使用中文。 
+                    3. 第二个文件为字体文件，图表生成过程的字体选择该字体文件。
+                    4. 第一个文件为表格文件，表格文件类型为{mime_type}。
+
+                用户指令如下：
+                {instruction}
+                """ 
+
                 # 创建一条消息
                 message = client.beta.threads.messages.create(
                     thread_id=thread.id,
@@ -117,14 +128,8 @@ def response():
 
                 run = client.beta.threads.runs.create_and_poll(
                     thread_id=thread.id,
-                    assistant_id='asst_fFJuBohoNBuvAwqhHXzZwBDC',
-                    instructions=f"""
-                    请认真对待用户的要求，有以下几点注意事项：
-                    1. 可以适当减少展示图片的横纵坐标的标签显示以保证不会过密。
-                    2. 标题和坐标的标签尽可能使用中文。
-                    3. 重点注意：第二个文件为字体文件，图表生成过程的字体选择该字体文件。
-                    4. 第一个文件为表格文件，表格文件类型为{mime_type}。
-                    """
+                    assistant_id='asst_rIcMKYvnJaHWyAa5hOQ1dAHR',
+                    instructions=prompt,
                 )
                 print("finish run")
 
