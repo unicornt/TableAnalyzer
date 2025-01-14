@@ -1,0 +1,20 @@
+location /upload {
+    proxy_pass http://106.15.170.182:9210/upload;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location /upload_file {
+    proxy_pass http://106.15.170.182:9210/upload_file;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+location /chat/completions {
+    proxy_pass http://106.15.170.182:9210/chat/completions;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}

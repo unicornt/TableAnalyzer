@@ -71,9 +71,8 @@ def send_string_to_chat_use_img(description):
 excel_file_path = 'student_grades.csv'
 send_excel_to_generate_image(excel_file_path)
 # description = "用直方图展示学生成绩在70-75、75-80、80-85、85-90、90-100的分布"
-# # description = "用折线图展示第一个同学所有作业分数的变化"
-# # # description = "展示各个期末考试和期中考试分差的学生数量分布"
-# # # description = "就学生总评，从60分开始到100分，每10分为一个区间画个饼图"
+# description = "用折线图展示每次作业平均分的变化"
+# description = "就学生总评，从60分开始到100分，每10分为一个区间画个饼图"
 # send_string_to_generate_chart(description)
 
 # # 使用例子2:对话

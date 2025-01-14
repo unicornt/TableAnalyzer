@@ -1,5 +1,8 @@
 .DS_Store
 data/
+tmp/
+log/
+*.ttc 
 *.png
 table_analyzer.tar
 *.csv

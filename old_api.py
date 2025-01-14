@@ -1,8 +1,18 @@
 import os
 import pandas as pd
 import duckdb
-from flask import Flask, request, jsonify, send_file
 import io
+import re
+# 渲染函数
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import MaxNLocator
+from openai import OpenAI
+import time, random, string
+
+client = OpenAI(
+    api_key=os.getenv('OPENAI_API_KEY')
+)
 
 class ExcelToDuckDB:
     def __init__(self, excel_file):
@@ -69,45 +79,22 @@ class ExcelToDuckDB:
 
         print(f"Excel 数据成功插入到 DuckDB 表 {table_name} 中。")
 
-# 创建 Flask 应用
-app = Flask(__name__)
-conn = None
-
-# 文件上传及创建 DuckDB 表接口
-@app.route('/upload_excel', methods=['POST'])
-def upload_excel():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({"error": "未上传文件"}), 400
-    
     # 保存文件到临时路径
-    temp_path = os.path.join('/tmp', file.filename)
-    file.save(temp_path)
 
-    excel_to_duckdb = ExcelToDuckDB(temp_path)
+def response(file_name, instruction):
+
+    excel_to_duckdb = ExcelToDuckDB(file_name)
     excel_to_duckdb.parse_excel()
 
-    global conn
     # 创建 DuckDB 表
     conn=excel_to_duckdb.create_duckdb_table(table_name="test_table")
     excel_to_duckdb.insert_data_into_duckdb("test_table")
 
-    return jsonify({"message": "文件成功上传并转换为 DuckDB 表"}), 200
-
-def gen_chart(user_input):
-    ## 获取表字段信息
-    global conn
     table_info = conn.execute("PRAGMA table_info('test_table');").fetchall()
 
     # 提取前三个字段
     filtered_table_info = [(row[0], row[1], row[2]) for row in table_info]
 
-    from openai import OpenAI
-    import os
-
-    client = OpenAI(
-        api_key=os.getenv('OPENAI_API_KEY')
-    )
     from jinja2 import Template
     def get_title_sql(filtered_table_info, user_input, table_name):
         """
@@ -155,14 +142,9 @@ def gen_chart(user_input):
     )
         return response.choices[0].message.content.replace("&gt;", ">").replace("&lt;", "<")
 
-    # user_input = request.get_json()['input']
-
     table_name = "test_table"
-    title_sql = get_title_sql(filtered_table_info, user_input,table_name)
+    title_sql = get_title_sql(filtered_table_info, instruction, table_name)
     print(title_sql)
-
-    # 解析sql函数
-    import re
 
     def parse_fixed_structure(input_str):
         """
@@ -188,8 +170,6 @@ def gen_chart(user_input):
 
     result = parse_fixed_structure(title_sql)
     print(result["name"],result["sql"])
-
-    import re
 
     def parse_sql_fields(sql):
         """
@@ -218,12 +198,8 @@ def gen_chart(user_input):
     data = conn.execute(result["sql"]).fetchall()
     print(data)
 
-    # 渲染函数
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-    from matplotlib.ticker import MaxNLocator
 
-    def get_graph_code(tab_name):
+    def get_graph_code(tab_name, filename):
         """
         :user_input
         :return: 生成的响应内容
@@ -242,7 +218,7 @@ def gen_chart(user_input):
         6.重点：输出内容不要包含markdown语法，内容的格式严格按照：<name>[图表标题]</name><python>[正确的python3代码]</python> 这样的格式，参考返回格式要求。
         7.重点：添加这条语句以保证生成的图片兼容中文： plt.rcParams['font.family'] = fm.FontProperties(fname='/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc').get_name()
         8.设置figsize为(10, 8)。
-        9.不需要显示图片，即删除“plt.show()”这句代码，将图片储存在"./tmpImg.png"中
+        9.不需要显示图片，即删除“plt.show()”这句代码，将图片储存在filename中。filename是一个变量，已经被定义，不需要你重复定义。
         
     请一步一步思考，给出结果，无需输出其他解释信息，并确保你的结果内容格式如下:
         <name>[图表标题]</name><python>[正确的python3代码]</python>
@@ -298,23 +274,21 @@ def gen_chart(user_input):
         }
         return result
 
+    timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+
+    # 生成一个随机的字符串（可自定义长度）
+    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    
+    # 组合时间戳和随机字符串，确保文件名唯一
+    filename = f"tmp/{timestamp}_{random_str}.png"
     title = result["name"]
-    result = get_graph_code(title)
+    result = get_graph_code(title, filename)
     parse_result = parse_fixed_python_structure(result)
     print(parse_result['python'])
     x = [item[0] for item in data]  # 转换为字符串类型，适用于分类轴
     y = [item[1] for item in data]
     # img=None
     exec(parse_result['python'])
-    return "./tmpImg.png"
+    return filename
 
-# 生成图表接口（返回图片）
-def generate_chart():
-    user_input = request.json.get('input')
-    img_path = gen_chart(user_input=user_input)
-
-    return send_file(img_path, mimetype='image/png')
-    # render_chart(data_2d,title,fields)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0',debug=True)
+print(response("data/student_grades.xlsx", "用直方图展示学生成绩在70-75、75-80、80-85、85-90、90-100的分布"))
