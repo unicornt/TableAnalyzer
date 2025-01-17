@@ -7,3 +7,5 @@ log/
 table_analyzer.tar
 *.csv
 *.xlsx
+*.crt
+*.key

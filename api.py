@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, Response
 import base64
 import pandas as pd
 import duckdb
@@ -17,6 +17,7 @@ import re
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import MaxNLocator
+import time
 
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
@@ -155,9 +156,9 @@ def table_response(file_name, instruction, history):
         2.重点 ：请检查你生成的sql，不要使用没在数据结构中的表名 和 字段 ，不得修改和使用不存在的表数据的结构 和 字段
         3.优先使用数据分析的方式回答，如果用户问题不涉及数据分析内容，你可以按你的理解进行回答
         4.输出内容中sql部分转换为：<name>[数据展示方式]</name><sql>[正确的duckdb数据分析sql]</sql> 这样的格式，参考返回格式要求
-        5.保证查询结果的字段个数等于2。
+        5.保证查询结果的字段个数小于等于2。
         6.每个字段的查询结果为数字的情况下，应该按照从小到大的顺序排列。如果两个字段的结果均为数字，以第一个字段为准排序。
-        7.数据展示方式包括：折线图、柱状图、散点图、饼图
+        7.数据展示方式包括：折线图、柱状图、散点图、饼图、sql、text。其中“sql”表示不需要生成图片，直接输出sql查询结果，“text”表示该问题和表格无关。
         
     请一步一步思考，给出结果，无需输出其他解释信息，并确保你的结果内容格式如下:
         <name>[数据展示方式]</name><sql>[正确的duckdb数据分析sql]</sql>
@@ -179,16 +180,18 @@ def table_response(file_name, instruction, history):
         
         # 调用模型进行聊天
         response = client.chat.completions.create(
-        messages=[
-            {"role": "user", "content": template},
-        ],
-        model="gpt-4o",
-    )
+            messages=[
+                {"role": "user", "content": template},
+            ],
+            model="gpt-4o",
+        )
         return response.choices[0].message.content.replace("&gt;", ">").replace("&lt;", "<")
 
     table_name = "test_table"
     title_sql = get_title_sql(filtered_table_info, instruction, table_name)
     print(title_sql)
+    if title_sql[:19] == "<name>[text]</name>":
+        return "Text"
 
     def parse_fixed_structure(input_str):
         """
@@ -238,9 +241,49 @@ def table_response(file_name, instruction, history):
     fields = parse_sql_fields(result["sql"])
     print(fields)
 
+    def toStr(instruction, data, sql):
+        template = """
+        根据用户提问、历史对话记录、sql语句和sql查询结果，生成你认为应该进行的回复，要求如下：
+        1. 如果不需要sql查询结果，请直接回答用户问题。
+        2. 如果需要sql查询结果，请严格根据sql查询结果生成回复，不要修改数据。
+
+        用户提问：
+        {{instruction}}
+        sql语句：
+        {{sql}}
+        sql查询结果：
+        {{data}}
+        """
+
+        request = Template(template).render(instruction=instruction, data = data, sql=sql)
+        print(request)
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=history+[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": request,
+                        },
+                    ],
+                }
+            ],
+        )
+        print(response)
+
+        return str(response.choices[0].message.content)
+
     # 数据
     data = conn.execute(result["sql"]).fetchall()
-    print(data)
+    if len(data) <= 8:
+        print(data)
+    else:
+        print(f"Too long data, show 8: {data[0:8]}")
+    if result["name"] == "[sql]":
+        return "sql:"+toStr(instruction, data, result["sql"])
 
 
     def get_graph_code(tab_name, filename):
@@ -335,6 +378,79 @@ def table_response(file_name, instruction, history):
     exec(parse_result['python'])
     return filename
 
+
+def stream_chatgpt(messages):
+    # print("data", messages)
+    print("streaming...")
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True
+    )
+    # print("resp", response)
+    for chunk in response:
+        # print("chunk", chunk)
+        # print("choices yes" if hasattr(chunk, "choices") in chunk else "choices no")
+        # print("content yes" if hasattr(chunk.choices[0].delta, "content") else "content no")
+
+        if hasattr(chunk, "choices") and hasattr(chunk.choices[0].delta, "content"):
+            content = chunk.choices[0].delta.content
+            # print("resp-chunk", content)
+            data = {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "content": content,
+                            "refusal": None
+                        },
+                        "logprobs": None,
+                        "finish_reason": None if content is not None else "stop"}
+                ]
+            }
+            yield f'data: {json.dumps(data)}\n\n'
+    # for i in range(11):
+    #     print("steam", i)
+    #     if i == 0:
+    #         data = {
+    #             "choices": [
+    #                 {
+    #                     "index": 0,
+    #                     "delta": {
+    #                         "role": "assistant",
+    #                         "content": "",
+    #                         "refusal": None
+    #                     },
+    #                     "logprobs": None,
+    #                     "finish_reason": None}
+    #             ]
+    #         }
+    #         yield f"data: {json.dumps(data)}\n\n"
+    #         time.sleep(1)
+    #     elif i < 10:
+    #         data = {
+    #             "choices": [
+    #                 {
+    #                     "index": 0,
+    #                     "delta": {
+    #                         "role": "assistant",
+    #                         "content": f"data: Chunk {i}\n",
+    #                         "refusal": None
+    #                     },
+    #                     "logprobs": None,
+    #                     "finish_reason": None if i < 9 else "stop"
+    #                 }
+    #             ],
+    #         }
+
+    #         #  {"choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}]}
+    #         yield f"data: {json.dumps(data)}\n\n"
+    #         time.sleep(1)
+    #     else:
+    #         yield "data: [DONE]\n\n"
+          # 模拟每秒生成一块数据
+
     
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -363,38 +479,62 @@ def upload():
 
 @app.route('/chat/completions', methods=['POST'])
 def response():
+    # data = [
+    #     {
+    #         "role": "user",
+    #         "content": [
+    #             {
+    #                 "type": "text",
+    #                 "text": "你是谁？",
+    #             },
+    #         ],
+    #     }
+    # ]
+    # return Response(stream_chatgpt(data), content_type="text/event-stream")
     # print(request.data)
     data = request.get_json()
     print(data)
-    messages = data.get('messages', [])
+    messages_get = data.get('messages', [])
+    is_stream = data.get('stream', [])
+    print(is_stream)
     instruction = None
     file_url = None
     file_type = None
     global client
     global font_file
-    for message in messages:
+    messages = []
+    for message in messages_get:
         if message.get("role", "") != "user":
+            messages.append(message)
             continue
         content = message.get("content", "")
         if isinstance(content, str):
             instruction = content
-            break
+            continue
+        newItem = []
         for item in content:
             # print(item)
             if item['type'] == 'text':
                 instruction = item['text']
+                newItem.append(item)
                 # file_url = None
-            elif item['type'] == 'image':
-                file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['file'])
+            elif item['type'] == 'image_url':
+                print(item)
+                # file_url = item['image_url']['url']
+                file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['image_url']['url'])
+                newItem.append(item)
                 file_type = 0
             elif item['type'] == 'table':
                 file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['file'])
+                # file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['image_url'])
                 file_type = 1
+        messages.append({"role": "user", "content": newItem})
         print(f"User Instruction: {instruction}")
         print(f"URL: {file_url}")
         # break
         # print(f"Table URL: {file_url}")
-
+    if len(messages) > 10:
+        messages = messages[-10:]
     if file_url != None:
         # file_extension = uploaded_file.filename.split('.')[-1].lower()
         attemp_times = 3
@@ -499,6 +639,48 @@ def response():
                     #         }
                     #     ]})
                     file_name = table_response(file_url, instruction, history=messages)
+                    if file_name == "Text":
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=messages+[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": instruction,
+                                        },
+                                    ],
+                                }
+                            ],
+                        )
+                        # print(response)
+                        # print(response.choices[0].message.content)
+                        return jsonify({"choices": [
+                                    {
+                                    "index": 0,
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": str(response.choices[0].message.content),
+                                        "refusal": None
+                                    },
+                                    "logprobs": None,
+                                    "finish_reason": "stop"
+                                    }
+                                ]})
+                    if len(file_name) >= 4 and file_name[0:4] == "sql:":
+                        return jsonify({"choices": [
+                            {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": str(file_name[4:]),
+                                "refusal": None
+                            },
+                            "logprobs": None,
+                            "finish_reason": "stop"
+                            }
+                        ]})
                     image_data_bytes = open(file_name, "rb").read()
                     mime = magic.Magic(mime=True)
                     mime_type = mime.from_buffer(image_data_bytes)
@@ -518,42 +700,76 @@ def response():
                     ]})
                 elif file_type == 0:
                     image_data_bytes = open(file_url, "rb").read()
+                    # print("file_url", file_url, image_data_bytes)
                     mime = magic.Magic(mime=True)
                     mime_type = mime.from_buffer(image_data_bytes)
                     base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=messages+[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": instruction,
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
-                                    },
-                                ],
-                            }
-                        ],
-                    )
-                    print(f"data:{mime_type};base64,{base64_image}")
-                    print(response)
-                    return jsonify({"choices": [
-                            {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": str(response.choices[0].message.content),
-                                "refusal": None
-                            },
-                            "logprobs": None,
-                            "finish_reason": "stop"
-                            }
-                        ]})
+                    # print("messages", messages+[
+                    #         {
+                    #             "role": "user",
+                    #             "content": [
+                    #                 {
+                    #                     "type": "text",
+                    #                     "text": instruction,
+                    #                 },
+                    #                 {
+                    #                     "type": "image_url",
+                    #                     "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+                    #                 },
+                    #             ],
+                    #         }
+                    #     ])
                     # return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
+                    if is_stream == True:
+                        return Response(stream_chatgpt(messages+[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": instruction,
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+                                        },
+                                    ],
+                                }
+                            ]), content_type="text/event-stream")
+                    else:
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=messages+[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": instruction,
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+                                        },
+                                    ],
+                                }
+                            ],
+                        )
+                        # print(f"data:{mime_type};base64,{base64_image}")
+                        # print(response)
+                        return jsonify({"choices": [
+                                {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": str(response.choices[0].message.content),
+                                    "refusal": None
+                                },
+                                "logprobs": None,
+                                "finish_reason": "stop"
+                                }
+                            ]})
+
                 else:
                     return jsonify({
                         "object": "error",
@@ -576,35 +792,48 @@ def response():
                         })
     else:
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages+[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": instruction,
-                            },
-                        ],
-                    }
-                ],
-            )
-            print(response)
-            # print(response.choices[0].message.content)
-            return jsonify({"choices": [
+            if is_stream == True:
+                return Response(stream_chatgpt(messages+[
                         {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": str(response.choices[0].message.content),
-                            "refusal": None
-                        },
-                        "logprobs": None,
-                        "finish_reason": "stop"
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": instruction,
+                                },
+                            ],
                         }
-                    ]})
-            # return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
+                    ]), content_type="text/event-stream")
+            else:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages+[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": instruction,
+                                },
+                            ],
+                        }
+                    ],
+                )
+                # print(response)
+                # print(response.choices[0].message.content)
+                return jsonify({"choices": [
+                            {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": str(response.choices[0].message.content),
+                                "refusal": None
+                            },
+                            "logprobs": None,
+                            "finish_reason": "stop"
+                            }
+                        ]})
+                return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
         except Exception as e:
             print(f"Error: {e}")
             return jsonify({
@@ -615,6 +844,10 @@ def response():
                 "code": 400
                 })
             # return jsonify({'error': }), 400
+
+@app.route('/hello', methods=['GET'])
+def hello():
+    return "hello world!"
 
 if __name__ == '__main__':
     app.run(debug=True, host="0.0.0.0", port=5000)
