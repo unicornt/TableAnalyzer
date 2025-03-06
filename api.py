@@ -20,6 +20,7 @@ from matplotlib.ticker import MaxNLocator
 import time
 
 UPLOAD_FOLDER = 'uploads'
+MODEL_TYPE = 'deepseek-v3-241226'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
@@ -27,13 +28,15 @@ TMP_FOLDER = 'tmp'
 if not os.path.exists(TMP_FOLDER):
     os.makedirs(TMP_FOLDER)
 
-client = OpenAI(
-    api_key=os.getenv('OPENAI_API_KEY')
+from volcenginesdkarkruntime import Ark
+client = Ark(
+    api_key=os.environ.get("ARK_API_KEY"),
 )
-font_file = client.files.create(
-    file=open("NotoSansCJK-Regular.ttc", "rb"),
-    purpose='user_data'
-)
+
+# font_file = client.files.create(
+#     file=open("NotoSansCJK-Regular.ttc", "rb"),
+#     purpose='user_data'
+# )
 
 # 初始化 Flask 应用
 app = Flask(__name__)
@@ -183,7 +186,7 @@ def table_response(file_name, instruction, history):
             messages=[
                 {"role": "user", "content": template},
             ],
-            model="gpt-4o",
+            model=MODEL_TYPE,
         )
         return response.choices[0].message.content.replace("&gt;", ">").replace("&lt;", "<")
 
@@ -259,7 +262,7 @@ def table_response(file_name, instruction, history):
         print(request)
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=MODEL_TYPE,
             messages=history+[
                 {
                     "role": "user",
@@ -334,7 +337,7 @@ def table_response(file_name, instruction, history):
         messages=[
             {"role": "user", "content": template},
         ],
-        model="gpt-4o",
+        model=MODEL_TYPE,
     )
         return extract_backtick_content(response.choices[0].message.content.replace("&gt;", ">").replace("&lt;", "<"))
     
@@ -383,7 +386,7 @@ def stream_chatgpt(messages):
     # print("data", messages)
     print("streaming...")
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=MODEL_TYPE,
         messages=messages,
         stream=True
     )
@@ -504,7 +507,7 @@ def response():
     global font_file
     messages = []
     for message in messages_get:
-        if message.get("role", "") != "user":
+        if message.get("role", "") == "system":
             messages.append(message)
             continue
         content = message.get("content", "")
@@ -516,334 +519,335 @@ def response():
             # print(item)
             if item['type'] == 'text':
                 instruction = item['text']
-                newItem.append(item)
+                newItem=instruction
                 # file_url = None
-            elif item['type'] == 'image_url':
-                print(item)
-                # file_url = item['image_url']['url']
-                file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['image_url']['url'])
-                newItem.append(item)
-                file_type = 0
-            elif item['type'] == 'table':
-                file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['file'])
-                # file_url = UPLOAD_FOLDER+"/"+os.path.basename(item['image_url'])
-                file_type = 1
-        messages.append({"role": "user", "content": newItem})
+        messages.append({"role": message.get("role", ""), "content": newItem})
         print(f"User Instruction: {instruction}")
         print(f"URL: {file_url}")
         # break
         # print(f"Table URL: {file_url}")
     if len(messages) > 10:
         messages = messages[-10:]
-    if file_url != None:
-        # file_extension = uploaded_file.filename.split('.')[-1].lower()
-        attemp_times = 3
-        while attemp_times >= 0:
-            try:
-                print(f"File type is {file_type}")
-                # 从请求中获取指令和文件 ID
-                if file_type == 1:
-                    print("Table file")
-                    # mime = magic.Magic(mime=True)
-                    # mime_type = mime.from_buffer(open(file_url, "rb").read())
-                    # # 将文件上传到 OpenAI 服务器
-                    # file = client.files.create(
-                    #     file=open(file_url, "rb"),
-                    #     purpose='assistants'
-                    # )
-                    # print("upload file to openai")
+    # if file_url != None:
+    #     # file_extension = uploaded_file.filename.split('.')[-1].lower()
+    #     attemp_times = 3
+    #     while attemp_times >= 0:
+    #         try:
+    #             print(f"File type is {file_type}")
+    #             # 从请求中获取指令和文件 ID
+    #             if file_type == 1:
+    #                 print("Table file")
+    #                 # mime = magic.Magic(mime=True)
+    #                 # mime_type = mime.from_buffer(open(file_url, "rb").read())
+    #                 # # 将文件上传到 OpenAI 服务器
+    #                 # file = client.files.create(
+    #                 #     file=open(file_url, "rb"),
+    #                 #     purpose='assistants'
+    #                 # )
+    #                 # print("upload file to openai")
 
-                    # # 创建一个线程
-                    # thread = client.beta.threads.create()
+    #                 # # 创建一个线程
+    #                 # thread = client.beta.threads.create()
 
-                    # prompt = """
-                    # 请遵从用户指令根据表格生成图片，有以下几点注意事项：
-                    #     1. 可以适当减少展示图片的横纵坐标的标签显示以保证不会过密。
-                    #     2. 标题和坐标的标签尽可能使用中文。 
-                    #     3. 第二个文件为字体文件，图表生成过程的字体选择该字体文件。
-                    #     4. 第一个文件为表格文件，表格文件类型为{mime_type}。
+    #                 # prompt = """
+    #                 # 请遵从用户指令根据表格生成图片，有以下几点注意事项：
+    #                 #     1. 可以适当减少展示图片的横纵坐标的标签显示以保证不会过密。
+    #                 #     2. 标题和坐标的标签尽可能使用中文。 
+    #                 #     3. 第二个文件为字体文件，图表生成过程的字体选择该字体文件。
+    #                 #     4. 第一个文件为表格文件，表格文件类型为{mime_type}。
 
-                    # 用户指令如下：
-                    # {instruction}
-                    # """ 
+    #                 # 用户指令如下：
+    #                 # {instruction}
+    #                 # """ 
 
-                    # # 创建一条消息
-                    # message = client.beta.threads.messages.create(
-                    #     thread_id=thread.id,
-                    #     role="user",
-                    #     content=instruction,
-                    #     attachments=[{ "file_id": file.id , "tools": [{"type": "code_interpreter"}]}, { "file_id": font_file.id , "tools": [{"type": "code_interpreter"}]}],
-                    # )
-                    # print("send message, start run")
+    #                 # # 创建一条消息
+    #                 # message = client.beta.threads.messages.create(
+    #                 #     thread_id=thread.id,
+    #                 #     role="user",
+    #                 #     content=instruction,
+    #                 #     attachments=[{ "file_id": file.id , "tools": [{"type": "code_interpreter"}]}, { "file_id": font_file.id , "tools": [{"type": "code_interpreter"}]}],
+    #                 # )
+    #                 # print("send message, start run")
 
-                    # run = client.beta.threads.runs.create_and_poll(
-                    #     thread_id=thread.id,
-                    #     assistant_id='asst_rIcMKYvnJaHWyAa5hOQ1dAHR',
-                    #     instructions=prompt,
-                    # )
-                    # print("finish run")
+    #                 # run = client.beta.threads.runs.create_and_poll(
+    #                 #     thread_id=thread.id,
+    #                 #     assistant_id='asst_rIcMKYvnJaHWyAa5hOQ1dAHR',
+    #                 #     instructions=prompt,
+    #                 # )
+    #                 # print("finish run")
 
-                    # messages = client.beta.threads.messages.list( # 查看thread.id中的message
-                    #     thread_id=thread.id
-                    # )
-                    # print("===============================")
-                    # print("get messages")
+    #                 # messages = client.beta.threads.messages.list( # 查看thread.id中的message
+    #                 #     thread_id=thread.id
+    #                 # )
+    #                 # print("===============================")
+    #                 # print("get messages")
 
-                    # messages.data = sorted(messages.data, key=lambda x: x.created_at, reverse=True)
+    #                 # messages.data = sorted(messages.data, key=lambda x: x.created_at, reverse=True)
 
-                    # messages_data = messages.data
+    #                 # messages_data = messages.data
 
-                    # # 获取最后一条消息
-                    # last_message = messages_data[0] if messages_data else None
+    #                 # # 获取最后一条消息
+    #                 # last_message = messages_data[0] if messages_data else None
 
-                    # # 打印最后一条消息
-                    # print(last_message)
-                    # print("===============================")
-                    # image_file_ids = []
+    #                 # # 打印最后一条消息
+    #                 # print(last_message)
+    #                 # print("===============================")
+    #                 # image_file_ids = []
 
-                    # for item in last_message.content:
-                    #     if item.type == "image_file":
-                    #         image_file_ids.append(item.image_file.file_id)
+    #                 # for item in last_message.content:
+    #                 #     if item.type == "image_file":
+    #                 #         image_file_ids.append(item.image_file.file_id)
 
-                    # print(image_file_ids)
-                    # if len(image_file_ids) == 0:
-                    #     return jsonify({"choices": [
-                    #         {
-                    #         "index": 0,
-                    #         "message": {
-                    #             "role": "assistant",
-                    #             "content": str(last_message.content[0].text.value),
-                    #             "refusal": None
-                    #         },
-                    #         "logprobs": None,
-                    #         "finish_reason": "stop"
-                    #         }
-                    #     ]})
-                    # else:
-                    #     image_data = client.files.content(image_file_ids[0])
-                    #     image_data_bytes = image_data.read()
-                    #     mime = magic.Magic(mime=True)
-                    #     mime_type = mime.from_buffer(image_data_bytes)
-                    #     base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
-                    #     # 返回生成的图像
-                    #     return jsonify({"choices": [
-                    #         {
-                    #         "index": 0,
-                    #         "message": {
-                    #             "role": "assistant",
-                    #             "content": str(last_message.content[1].text.value)+f"<BZIMAGE>data:{mime_type};base64,{base64_image}",
-                    #             "refusal": None
-                    #         },
-                    #         "logprobs": None,
-                    #         "finish_reason": "stop"
-                    #         }
-                    #     ]})
-                    file_name = table_response(file_url, instruction, history=messages)
-                    if file_name == "Text":
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=messages+[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": instruction,
-                                        },
-                                    ],
-                                }
-                            ],
-                        )
-                        # print(response)
-                        # print(response.choices[0].message.content)
-                        return jsonify({"choices": [
-                                    {
-                                    "index": 0,
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": str(response.choices[0].message.content),
-                                        "refusal": None
-                                    },
-                                    "logprobs": None,
-                                    "finish_reason": "stop"
-                                    }
-                                ]})
-                    if len(file_name) >= 4 and file_name[0:4] == "sql:":
-                        return jsonify({"choices": [
+    #                 # print(image_file_ids)
+    #                 # if len(image_file_ids) == 0:
+    #                 #     return jsonify({"choices": [
+    #                 #         {
+    #                 #         "index": 0,
+    #                 #         "message": {
+    #                 #             "role": "assistant",
+    #                 #             "content": str(last_message.content[0].text.value),
+    #                 #             "refusal": None
+    #                 #         },
+    #                 #         "logprobs": None,
+    #                 #         "finish_reason": "stop"
+    #                 #         }
+    #                 #     ]})
+    #                 # else:
+    #                 #     image_data = client.files.content(image_file_ids[0])
+    #                 #     image_data_bytes = image_data.read()
+    #                 #     mime = magic.Magic(mime=True)
+    #                 #     mime_type = mime.from_buffer(image_data_bytes)
+    #                 #     base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
+    #                 #     # 返回生成的图像
+    #                 #     return jsonify({"choices": [
+    #                 #         {
+    #                 #         "index": 0,
+    #                 #         "message": {
+    #                 #             "role": "assistant",
+    #                 #             "content": str(last_message.content[1].text.value)+f"<BZIMAGE>data:{mime_type};base64,{base64_image}",
+    #                 #             "refusal": None
+    #                 #         },
+    #                 #         "logprobs": None,
+    #                 #         "finish_reason": "stop"
+    #                 #         }
+    #                 #     ]})
+    #                 file_name = table_response(file_url, instruction, history=messages)
+    #                 if file_name == "Text":
+    #                     response = client.chat.completions.create(
+    #                         model=MODEL_TYPE,
+    #                         messages=messages+[
+    #                             {
+    #                                 "role": "user",
+    #                                 "content": [
+    #                                     {
+    #                                         "type": "text",
+    #                                         "text": instruction,
+    #                                     },
+    #                                 ],
+    #                             }
+    #                         ],
+    #                     )
+    #                     # print(response)
+    #                     # print(response.choices[0].message.content)
+    #                     return jsonify({"choices": [
+    #                                 {
+    #                                 "index": 0,
+    #                                 "message": {
+    #                                     "role": "assistant",
+    #                                     "content": str(response.choices[0].message.content),
+    #                                     "refusal": None
+    #                                 },
+    #                                 "logprobs": None,
+    #                                 "finish_reason": "stop"
+    #                                 }
+    #                             ]})
+    #                 if len(file_name) >= 4 and file_name[0:4] == "sql:":
+    #                     return jsonify({"choices": [
+    #                         {
+    #                         "index": 0,
+    #                         "message": {
+    #                             "role": "assistant",
+    #                             "content": str(file_name[4:]),
+    #                             "refusal": None
+    #                         },
+    #                         "logprobs": None,
+    #                         "finish_reason": "stop"
+    #                         }
+    #                     ]})
+    #                 image_data_bytes = open(file_name, "rb").read()
+    #                 mime = magic.Magic(mime=True)
+    #                 mime_type = mime.from_buffer(image_data_bytes)
+    #                 base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
+    #                 # 返回生成的图像
+    #                 return jsonify({"choices": [
+    #                     {
+    #                     "index": 0,
+    #                     "message": {
+    #                         "role": "assistant",
+    #                         "content": "已为您生成图片，请查看。"+f"<BZIMAGE>data:{mime_type};base64,{base64_image}",
+    #                         "refusal": None
+    #                     },
+    #                     "logprobs": None,
+    #                     "finish_reason": "stop"
+    #                     }
+    #                 ]})
+    #             elif file_type == 0:
+    #                 image_data_bytes = open(file_url, "rb").read()
+    #                 # print("file_url", file_url, image_data_bytes)
+    #                 mime = magic.Magic(mime=True)
+    #                 mime_type = mime.from_buffer(image_data_bytes)
+    #                 base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
+    #                 # print("messages", messages+[
+    #                 #         {
+    #                 #             "role": "user",
+    #                 #             "content": [
+    #                 #                 {
+    #                 #                     "type": "text",
+    #                 #                     "text": instruction,
+    #                 #                 },
+    #                 #                 {
+    #                 #                     "type": "image_url",
+    #                 #                     "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+    #                 #                 },
+    #                 #             ],
+    #                 #         }
+    #                 #     ])
+    #                 # return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
+    #                 if is_stream == True:
+    #                     return Response(stream_chatgpt(messages+[
+    #                             {
+    #                                 "role": "user",
+    #                                 "content": [
+    #                                     {
+    #                                         "type": "text",
+    #                                         "text": instruction,
+    #                                     },
+    #                                     {
+    #                                         "type": "image_url",
+    #                                         "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+    #                                     },
+    #                                 ],
+    #                             }
+    #                         ]), content_type="text/event-stream")
+    #                 else:
+    #                     response = client.chat.completions.create(
+    #                         model=MODEL_TYPE,
+    #                         messages=messages+[
+    #                             {
+    #                                 "role": "user",
+    #                                 "content": [
+    #                                     {
+    #                                         "type": "text",
+    #                                         "text": instruction,
+    #                                     },
+    #                                     {
+    #                                         "type": "image_url",
+    #                                         "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+    #                                     },
+    #                                 ],
+    #                             }
+    #                         ],
+    #                     )
+    #                     # print(f"data:{mime_type};base64,{base64_image}")
+    #                     # print(response)
+    #                     return jsonify({"choices": [
+    #                             {
+    #                             "index": 0,
+    #                             "message": {
+    #                                 "role": "assistant",
+    #                                 "content": str(response.choices[0].message.content),
+    #                                 "refusal": None
+    #                             },
+    #                             "logprobs": None,
+    #                             "finish_reason": "stop"
+    #                             }
+    #                         ]})
+
+    #             else:
+    #                 return jsonify({
+    #                     "object": "error",
+    #                     "message": str(e),
+    #                     "type": 'Unsupported file type',
+    #                     "param": None,
+    #                     "code": 400
+    #                     })
+    #                 # return jsonify({'error': 'Unsupported file type'}), 400
+    #         except Exception as e:
+    #             print(f"Error: {e}, attemp_times: {attemp_times}")
+    #             attemp_times -= 1
+    #             if attemp_times < 0:
+    #                 return jsonify({
+    #                     "object": "error",
+    #                     "message": str(e),
+    #                     "type": "NotFoundError",
+    #                     "param": None,
+    #                     "code": 400
+    #                     })
+    # else:
+    try:
+        print(messages+[
+                    {
+                        "role": "user",
+                        "content": [
                             {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": str(file_name[4:]),
-                                "refusal": None
+                                "type": "text",
+                                "text": instruction,
                             },
-                            "logprobs": None,
-                            "finish_reason": "stop"
-                            }
-                        ]})
-                    image_data_bytes = open(file_name, "rb").read()
-                    mime = magic.Magic(mime=True)
-                    mime_type = mime.from_buffer(image_data_bytes)
-                    base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
-                    # 返回生成的图像
-                    return jsonify({"choices": [
+                        ],
+                    }
+                ])
+        if is_stream == True:
+            return Response(stream_chatgpt(messages+[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": instruction,
+                            },
+                        ],
+                    }
+                ]), content_type="text/event-stream")
+        else:
+            response = client.chat.completions.create(
+                model=MODEL_TYPE,
+                messages=messages+[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": instruction,
+                            },
+                        ],
+                    }
+                ],
+            )
+            # print(response)
+            # print(response.choices[0].message.content)
+            return jsonify({"choices": [
                         {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "已为您生成图片，请查看。"+f"<BZIMAGE>data:{mime_type};base64,{base64_image}",
+                            "content": str(response.choices[0].message.content),
                             "refusal": None
                         },
                         "logprobs": None,
                         "finish_reason": "stop"
                         }
                     ]})
-                elif file_type == 0:
-                    image_data_bytes = open(file_url, "rb").read()
-                    # print("file_url", file_url, image_data_bytes)
-                    mime = magic.Magic(mime=True)
-                    mime_type = mime.from_buffer(image_data_bytes)
-                    base64_image = base64.b64encode(image_data_bytes).decode("utf-8")
-                    # print("messages", messages+[
-                    #         {
-                    #             "role": "user",
-                    #             "content": [
-                    #                 {
-                    #                     "type": "text",
-                    #                     "text": instruction,
-                    #                 },
-                    #                 {
-                    #                     "type": "image_url",
-                    #                     "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
-                    #                 },
-                    #             ],
-                    #         }
-                    #     ])
-                    # return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
-                    if is_stream == True:
-                        return Response(stream_chatgpt(messages+[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": instruction,
-                                        },
-                                        {
-                                            "type": "image_url",
-                                            "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
-                                        },
-                                    ],
-                                }
-                            ]), content_type="text/event-stream")
-                    else:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=messages+[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": instruction,
-                                        },
-                                        {
-                                            "type": "image_url",
-                                            "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
-                                        },
-                                    ],
-                                }
-                            ],
-                        )
-                        # print(f"data:{mime_type};base64,{base64_image}")
-                        # print(response)
-                        return jsonify({"choices": [
-                                {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": str(response.choices[0].message.content),
-                                    "refusal": None
-                                },
-                                "logprobs": None,
-                                "finish_reason": "stop"
-                                }
-                            ]})
-
-                else:
-                    return jsonify({
-                        "object": "error",
-                        "message": str(e),
-                        "type": 'Unsupported file type',
-                        "param": None,
-                        "code": 400
-                        })
-                    # return jsonify({'error': 'Unsupported file type'}), 400
-            except Exception as e:
-                print(f"Error: {e}, attemp_times: {attemp_times}")
-                attemp_times -= 1
-                if attemp_times < 0:
-                    return jsonify({
-                        "object": "error",
-                        "message": str(e),
-                        "type": "NotFoundError",
-                        "param": None,
-                        "code": 400
-                        })
-    else:
-        try:
-            if is_stream == True:
-                return Response(stream_chatgpt(messages+[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": instruction,
-                                },
-                            ],
-                        }
-                    ]), content_type="text/event-stream")
-            else:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=messages+[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": instruction,
-                                },
-                            ],
-                        }
-                    ],
-                )
-                # print(response)
-                # print(response.choices[0].message.content)
-                return jsonify({"choices": [
-                            {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": str(response.choices[0].message.content),
-                                "refusal": None
-                            },
-                            "logprobs": None,
-                            "finish_reason": "stop"
-                            }
-                        ]})
-                return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
-        except Exception as e:
-            print(f"Error: {e}")
-            return jsonify({
-                "object": "error",
-                "message": str(e),
-                "type": "NotFoundError",
-                "param": None,
-                "code": 400
-                })
-            # return jsonify({'error': }), 400
+            return jsonify({"type": "message", 'message': str(response.choices[0].message.content)}), 200
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({
+            "object": "error",
+            "message": str(e),
+            "type": "NotFoundError",
+            "param": None,
+            "code": 400
+            })
+        # return jsonify({'error': }), 400
 
 @app.route('/hello', methods=['GET'])
 def hello():

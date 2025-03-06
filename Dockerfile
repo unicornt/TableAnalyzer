@@ -3,6 +3,7 @@ FROM python:3.9-slim
 
 # 安装所需的 Python 包
 RUN pip install --no-cache-dir pandas duckdb openpyxl matplotlib jinja2 openai flask
+RUN pip install --no-cache-dir 'volcengine-python-sdk[ark]'
 
 RUN apt update
 RUN apt install -y fonts-noto-cjk
